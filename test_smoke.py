@@ -10,15 +10,9 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
-
-# Generate a test key
-from cryptography.fernet import Fernet
-
-# Set up test env before importing server
 _test_root = Path(tempfile.mkdtemp(prefix="safebase-test-"))
-_test_key = Fernet.generate_key().decode()
 os.environ["SAFEBASE_ROOT"] = str(_test_root)
-os.environ["SAFEBASE_KEY"] = _test_key
+os.environ["SAFEBASE_PASSWORD"] = "test-password-for-safebase"
 
 sys.path.insert(0, str(Path(__file__).parent))
 import server

@@ -55,16 +55,19 @@ Encrypted file store (OUTSIDE the repo, path set via env var)
 pip install -r requirements.txt
 ```
 
-### 2. Generate an encryption key
+### 2. Choose a password
 
-```python
-from cryptography.fernet import Fernet
-print(Fernet.generate_key().decode())
+Pick a strong password. This is the only secret — it encrypts all files. The server derives a Fernet key from it using PBKDF2-SHA256 (600,000 iterations). You do not need to generate or manage a Fernet key directly.
+
+### 3. Create the storage directory
+
+Create a directory where encrypted databases will live. This should be outside any git repo.
+
+```bash
+mkdir C:\Users\YourName\safebase-data
 ```
 
-Save this key somewhere safe (password manager). You will put it in the MCP config.
-
-### 3. Configure the MCP server
+### 4. Configure the MCP server
 
 Add to your MCP client config (e.g., `mcp_config.json` for Windsurf):
 
@@ -75,8 +78,8 @@ Add to your MCP client config (e.g., `mcp_config.json` for Windsurf):
       "command": "python",
       "args": ["D:\\PROJECTs\\_modules_dracory\\mcp-safebase\\server.py"],
       "env": {
-        "SAFEBASE_ROOT": "C:\\Users\\SINEVIA\\safebase-data",
-        "SAFEBASE_KEY": "<your-fernet-key-here>"
+        "SAFEBASE_ROOT": "C:\\Users\\YourName\\safebase-data",
+        "SAFEBASE_PASSWORD": "your-strong-password-here"
       }
     }
   }
@@ -84,7 +87,7 @@ Add to your MCP client config (e.g., `mcp_config.json` for Windsurf):
 ```
 
 - `SAFEBASE_ROOT` - the root directory where databases are stored. Create this directory before use.
-- `SAFEBASE_KEY` - the Fernet encryption key. Generate one (see step 2).
+- `SAFEBASE_PASSWORD` - your password. The server derives the encryption key from it via PBKDF2-SHA256.
 
 ### 4. Start using
 
@@ -166,7 +169,8 @@ Same server, same tools, different bucket, different schema.
 ## Security
 
 - **Fernet encryption** - every file is encrypted with AES-128-CBC + HMAC-SHA256. Files on disk are ciphertext.
-- **Key in env, not in repo** - the encryption key is in `SAFEBASE_KEY` env var, set in the MCP client config. It never appears in the server code, in the stored files, or in chat logs.
+- **Password-based key derivation** - the server derives the Fernet key from your password using PBKDF2-SHA256 (600,000 iterations). You provide a password, not a raw key.
+- **Password in env, not in repo** - the password is in `SAFEBASE_PASSWORD` env var, set in the MCP client config. It never appears in the server code, in the stored files, or in chat logs.
 - **No plaintext on disk** - the storage root contains only `.enc` files. No plaintext is ever written to disk.
 - **Local only** - the server runs as a stdio subprocess. No network exposure.
 

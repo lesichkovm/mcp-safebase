@@ -9,6 +9,8 @@ Environment variables:
     SAFEBASE_KEY  - Fernet encryption key (required)
 """
 
+import base64
+import hashlib
 import json
 import os
 import re
@@ -23,6 +25,14 @@ from mcp.server import MCPServer
 # Configuration
 # ---------------------------------------------------------------------------
 
+# Fixed salt for PBKDF2 key derivation. The salt does not need to be secret —
+# its purpose is to prevent precomputed rainbow table attacks. A fixed
+# application-specific salt is standard practice for local encryption tools.
+# The security comes from the password, not the salt.
+_PBKDF2_SALT = b"safebase-v1-pbkdf2-salt"
+_PBKDF2_ITERATIONS = 600_000  # OWASP-recommended minimum for PBKDF2-SHA256
+
+
 def _get_root() -> Path:
     root = os.environ.get("SAFEBASE_ROOT")
     if not root:
@@ -35,11 +45,23 @@ def _get_root() -> Path:
     return p.resolve()
 
 
+def _derive_fernet_key(password: str) -> bytes:
+    """Derive a Fernet-compatible key from a password using PBKDF2-SHA256."""
+    key = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        _PBKDF2_SALT,
+        _PBKDF2_ITERATIONS,
+        dklen=32,
+    )
+    return base64.urlsafe_b64encode(key)
+
+
 def _get_fernet() -> Fernet:
-    key = os.environ.get("SAFEBASE_KEY")
-    if not key:
-        raise RuntimeError("SAFEBASE_KEY environment variable is not set")
-    return Fernet(key.encode())
+    password = os.environ.get("SAFEBASE_PASSWORD")
+    if not password:
+        raise RuntimeError("SAFEBASE_PASSWORD environment variable is not set")
+    return Fernet(_derive_fernet_key(password))
 
 
 # ---------------------------------------------------------------------------
