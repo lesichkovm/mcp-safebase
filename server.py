@@ -4,9 +4,13 @@ Organizes data as databases > buckets > files. Each file is an encrypted JSON
 object. The server is schema-free: the caller decides what fields go in each
 file. Encryption uses Fernet (AES-128-CBC + HMAC-SHA256).
 
+The storage root is a git repository. Every put_file and delete_file operation
+auto-commits, providing full history and reversion. Since all files are
+encrypted (.enc), the git history contains only ciphertext.
+
 Environment variables:
-    SAFEBASE_ROOT - root directory for all databases (required)
-    SAFEBASE_KEY  - Fernet encryption key (required)
+    SAFEBASE_ROOT     - root directory for all databases (required, must be a git repo or will be initialized as one)
+    SAFEBASE_PASSWORD - password for encryption key derivation (required)
 """
 
 import base64
@@ -14,6 +18,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -132,6 +137,63 @@ def _decrypt(fernet: Fernet, ciphertext: bytes) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Git helpers (auto-commit for history and reversion)
+# ---------------------------------------------------------------------------
+
+def _git_init(root: Path) -> None:
+    """Initialize a git repo at root if not already one. Idempotent."""
+    git_dir = root / ".git"
+    if git_dir.exists():
+        return
+    subprocess.run(
+        ["git", "init"],
+        cwd=str(root),
+        capture_output=True,
+        check=True,
+    )
+    # Set a default identity so commits work without global git config
+    subprocess.run(
+        ["git", "config", "user.name", "SafeBase MCP"],
+        cwd=str(root),
+        capture_output=True,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "safebase@local"],
+        cwd=str(root),
+        capture_output=True,
+        check=True,
+    )
+
+
+def _git_commit(root: Path, message: str) -> None:
+    """Stage all changes and commit. No-op if there are no changes."""
+    _git_init(root)
+    # Stage all (add new, modify, delete)
+    subprocess.run(
+        ["git", "add", "-A"],
+        cwd=str(root),
+        capture_output=True,
+        check=True,
+    )
+    # Check if there are staged changes to commit
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--quiet"],
+        cwd=str(root),
+        capture_output=True,
+    )
+    # Exit code 0 = no changes, 1 = changes present
+    if result.returncode == 0:
+        return
+    subprocess.run(
+        ["git", "commit", "-m", message],
+        cwd=str(root),
+        capture_output=True,
+        check=True,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Core logic (plain functions, testable without MCP transport)
 # ---------------------------------------------------------------------------
 
@@ -151,6 +213,9 @@ def _create_database(database: str) -> str:
     if db_path.exists():
         return f"Database '{database}' already exists"
     db_path.mkdir(parents=True, exist_ok=False)
+    # Add .gitkeep so git tracks the empty directory
+    (db_path / ".gitkeep").write_text("")
+    _git_commit(root, f"create database: {database}")
     return f"Created database '{database}'"
 
 
@@ -174,6 +239,9 @@ def _create_bucket(database: str, bucket: str) -> str:
     if bucket_path.exists():
         return f"Bucket '{database}/{bucket}' already exists"
     bucket_path.mkdir(parents=True, exist_ok=False)
+    # Add .gitkeep so git tracks the empty directory
+    (bucket_path / ".gitkeep").write_text("")
+    _git_commit(root, f"create bucket: {database}/{bucket}")
     return f"Created bucket '{database}/{bucket}'"
 
 
@@ -203,6 +271,7 @@ def _put_file(database: str, bucket: str, filename: str, content: dict[str, Any]
     file_path = _file_path(root, database, bucket, filename)
     encrypted = _encrypt(fernet, content)
     file_path.write_bytes(encrypted)
+    _git_commit(root, f"put: {database}/{bucket}/{filename}")
     return f"Wrote {database}/{bucket}/{filename} ({len(encrypted)} bytes encrypted)"
 
 
@@ -232,6 +301,7 @@ def _delete_file(database: str, bucket: str, filename: str) -> str:
         return f"File '{database}/{bucket}/{filename}' does not exist"
 
     file_path.unlink()
+    _git_commit(root, f"delete: {database}/{bucket}/{filename}")
     return f"Deleted {database}/{bucket}/{filename}"
 
 

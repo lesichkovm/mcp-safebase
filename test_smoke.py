@@ -182,6 +182,33 @@ def test_full_workflow():
     print(f"List nonexistent bucket: {result}")
     assert "does not exist" in result
 
+    # 22. Verify git history was created
+    import subprocess
+    git_log = subprocess.run(
+        ["git", "log", "--oneline"],
+        cwd=str(_test_root),
+        capture_output=True,
+        text=True,
+    )
+    print(f"\nGit log:\n{git_log.stdout}")
+    assert git_log.returncode == 0, "git log failed"
+    assert "put:" in git_log.stdout, "No put commits in git log"
+    assert "delete:" in git_log.stdout, "No delete commits in git log"
+    assert "create database:" in git_log.stdout, "No create database commits in git log"
+    assert "create bucket:" in git_log.stdout, "No create bucket commits in git log"
+    print("Git history check: PASS")
+
+    # 23. Verify git history contains only ciphertext (no plaintext in diffs)
+    git_diff = subprocess.run(
+        ["git", "log", "-p", "--all"],
+        cwd=str(_test_root),
+        capture_output=True,
+        text=True,
+    )
+    assert "Jane Smith" not in git_diff.stdout, "Plaintext 'Jane Smith' found in git history!"
+    assert "jane@example.com" not in git_diff.stdout, "Plaintext email found in git history!"
+    print("Git history encryption check: PASS (no plaintext in diffs)")
+
     print("\n=== ALL TESTS PASSED ===")
 
 
