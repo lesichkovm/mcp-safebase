@@ -1,6 +1,9 @@
 """Quick smoke test for SafeBase server logic (no MCP transport).
 
-Tests the core encryption, file I/O, and query logic directly.
+Tests the core encryption, file I/O, query logic, and the per-bucket password
+system directly. The dialog functions are mocked to inject canned passwords
+so this runs headless without tkinter.
+
 Run: python test_smoke.py
 """
 
@@ -10,12 +13,30 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+
 _test_root = Path(tempfile.mkdtemp(prefix="safebase-test-"))
 os.environ["SAFEBASE_ROOT"] = str(_test_root)
-os.environ["SAFEBASE_PASSWORD"] = "test-password-for-safebase"
+os.environ.pop("SAFEBASE_PASSWORD", None)  # ensure no leftover env var
 
 sys.path.insert(0, str(Path(__file__).parent))
 import server
+
+
+# --- Mock the dialog functions so this runs headless ---
+
+def make_dialog(password, duration=5):
+    def _mock(database, bucket):
+        return server.DialogResult(password=password, duration_minutes=duration)
+    return _mock
+
+def cancel_dialog():
+    def _mock(database, bucket):
+        return None
+    return _mock
+
+server._prompt_create_password_fn = make_dialog("smoke-pass-123")
+server._prompt_enter_password_fn = make_dialog("smoke-pass-123")
+server._prompt_change_password_fn = make_dialog("new-smoke-pass-456")
 
 
 def test_full_workflow():
@@ -41,7 +62,7 @@ def test_full_workflow():
     print(f"list_buckets: {buckets}")
     assert "sme-candidates" in buckets
 
-    # 5. Put a file
+    # 5. Put a file (this triggers the create-password dialog mock)
     result = server._put_file("coursethread", "sme-candidates", "cand-001.json", {
         "name": "Jane Smith",
         "email": "jane@example.com",
@@ -72,6 +93,8 @@ def test_full_workflow():
     print(f"list_files: {files}")
     assert "cand-001.json" in files
     assert "cand-002.json" in files
+    # Metadata file should NOT appear
+    assert ".safebase-meta.json" not in files
 
     # 8. Get a file
     data = server._get_file("coursethread", "sme-candidates", "cand-001.json")
@@ -86,6 +109,13 @@ def test_full_workflow():
     assert b"Jane Smith" not in raw_bytes, "File on disk contains plaintext!"
     assert b"jane@example.com" not in raw_bytes, "File on disk contains plaintext!"
     print(f"Encryption check: PASS (file is ciphertext, {len(raw_bytes)} bytes)")
+
+    # 9b. Verify metadata file exists and contains no plaintext password
+    meta_path = root / "coursethread" / "sme-candidates" / ".safebase-meta.json"
+    assert meta_path.exists(), "Metadata file not created!"
+    meta_text = meta_path.read_text()
+    assert "smoke-pass-123" not in meta_text, "Plaintext password in metadata!"
+    print("Metadata check: PASS (bcrypt hash + salt, no plaintext password)")
 
     # 10. Query bucket (no filter)
     items = server._query_bucket("coursethread", "sme-candidates")
@@ -133,7 +163,8 @@ def test_full_workflow():
     assert "cand-001.json" in files
     print(f"Delete check: PASS (cand-002 gone, cand-001 remains)")
 
-    # 17. Test a second bucket (different schema)
+    # 17. Test a second bucket (different schema, different password)
+    server._prompt_create_password_fn = make_dialog("tender-pass-456")
     result = server._create_bucket("coursethread", "tender-leads")
     print(f"\ncreate_bucket (tender-leads): {result}")
 
@@ -145,6 +176,9 @@ def test_full_workflow():
     })
     print(f"put_file (tender): {result}")
 
+    # Clear cache so query re-prompts with the tender password
+    server._key_cache.clear()
+    server._prompt_enter_password_fn = make_dialog("tender-pass-456")
     items = server._query_bucket("coursethread", "tender-leads", {"status": "monitoring"})
     print(f"query_bucket (tender, filter=monitoring): {len(items)} items")
     assert len(items) == 1
@@ -182,7 +216,46 @@ def test_full_workflow():
     print(f"List nonexistent bucket: {result}")
     assert "does not exist" in result
 
-    # 22. Verify git history was created
+    # 22. Test access denied (cancel dialog)
+    server._key_cache.clear()
+    server._prompt_enter_password_fn = cancel_dialog()
+    result = server._get_file("coursethread", "sme-candidates", "cand-001.json")
+    print(f"Access denied (cancel): {result}")
+    assert "Access denied" in result
+    # Restore the dialog mock
+    server._prompt_enter_password_fn = make_dialog("smoke-pass-123")
+
+    # 23. Test wrong password
+    server._key_cache.clear()
+    server._prompt_enter_password_fn = make_dialog("wrong-password")
+    result = server._get_file("coursethread", "sme-candidates", "cand-001.json")
+    print(f"Wrong password: {result}")
+    assert "Access denied" in result
+    server._prompt_enter_password_fn = make_dialog("smoke-pass-123")
+
+    # 24. Test change_bucket_password
+    server._key_cache.clear()
+    server._prompt_enter_password_fn = make_dialog("smoke-pass-123")
+    server._prompt_change_password_fn = make_dialog("new-smoke-pass-456")
+    result = server._change_bucket_password("coursethread", "sme-candidates")
+    print(f"change_bucket_password: {result}")
+    assert "Password changed" in result
+
+    # Verify we can read with the new password
+    server._key_cache.clear()
+    server._prompt_enter_password_fn = make_dialog("new-smoke-pass-456")
+    data = server._get_file("coursethread", "sme-candidates", "cand-001.json")
+    assert data["name"] == "Jane Smith"
+    print("Password change check: PASS (files decrypt with new password)")
+
+    # 25. Test delete_bucket
+    result = server._delete_bucket("coursethread", "tender-leads")
+    print(f"delete_bucket: {result}")
+    assert "Deleted bucket" in result
+    assert not (root / "coursethread" / "tender-leads").exists()
+    print("Delete bucket check: PASS")
+
+    # 26. Verify git history was created
     import subprocess
     git_log = subprocess.run(
         ["git", "log", "--oneline"],
@@ -196,9 +269,11 @@ def test_full_workflow():
     assert "delete:" in git_log.stdout, "No delete commits in git log"
     assert "create database:" in git_log.stdout, "No create database commits in git log"
     assert "create bucket:" in git_log.stdout, "No create bucket commits in git log"
+    assert "delete bucket:" in git_log.stdout, "No delete bucket commits in git log"
+    assert "change password:" in git_log.stdout, "No change password commits in git log"
     print("Git history check: PASS")
 
-    # 23. Verify git history contains only ciphertext (no plaintext in diffs)
+    # 27. Verify git history contains only ciphertext (no plaintext in diffs)
     git_diff = subprocess.run(
         ["git", "log", "-p", "--all"],
         cwd=str(_test_root),
@@ -207,6 +282,7 @@ def test_full_workflow():
     )
     assert "Jane Smith" not in git_diff.stdout, "Plaintext 'Jane Smith' found in git history!"
     assert "jane@example.com" not in git_diff.stdout, "Plaintext email found in git history!"
+    assert "smoke-pass-123" not in git_diff.stdout, "Plaintext password found in git history!"
     print("Git history encryption check: PASS (no plaintext in diffs)")
 
     print("\n=== ALL TESTS PASSED ===")
@@ -216,6 +292,5 @@ if __name__ == "__main__":
     try:
         test_full_workflow()
     finally:
-        # Cleanup
         shutil.rmtree(_test_root, ignore_errors=True)
         print(f"\nCleaned up test root: {_test_root}")
