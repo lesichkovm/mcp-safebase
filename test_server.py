@@ -852,7 +852,14 @@ class TestEdgeCases:
         assert "Wrote" in result
 
     def test_change_password_partial_failure_preserves_old_metadata(self, server, test_env, monkeypatch):
-        """If re-encryption fails partway, the old metadata is still on disk."""
+        """If re-encryption fails partway, the old metadata is still on disk.
+
+        _change_bucket_password does not catch OSError from write_bytes (it's
+        an unexpected I/O failure), so the exception propagates. The key
+        safety property is that the metadata file was NOT updated before the
+        failure — so the old password still works and the remaining files
+        are still decryptable.
+        """
         server._create_database("mydb")
         server._create_bucket("mydb", "mybucket")
         server._put_file("mydb", "mybucket", "f1.json", {"val": 1})
@@ -865,20 +872,19 @@ class TestEdgeCases:
 
         # Monkeypatch write_bytes on Path to fail on the second .enc file
         original_write = Path.write_bytes
-        call_count = [0]
         def failing_write(self, data):
             if self.name.endswith(".enc") and "f2" in self.name:
-                call_count[0] += 1
                 raise OSError("Simulated disk full")
             return original_write(self, data)
         monkeypatch.setattr(Path, "write_bytes", failing_write)
 
         server._prompt_enter_password_fn = make_enter_dialog("test-pass-123")
         server._prompt_change_password_fn = make_change_dialog("new-pass-456")
-        result = server._change_bucket_password("mydb", "mybucket")
 
-        # The operation should have failed
-        assert "Password changed" not in result
+        # The call should raise OSError (propagated from write_bytes)
+        with pytest.raises(OSError, match="Simulated disk full"):
+            server._change_bucket_password("mydb", "mybucket")
+
         # The old metadata should be unchanged (new metadata was NOT written)
         assert meta_path.read_text() == old_meta_content
 
