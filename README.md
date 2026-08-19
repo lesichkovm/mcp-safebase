@@ -43,7 +43,7 @@ Encrypted file store (OUTSIDE the repo, path set via env var)
 
 1. **Files live outside the repo** - the storage root is set via `SAFEBASE_ROOT` env var. No encrypted files are committed to any repo.
 2. **Encryption at rest** - every file is encrypted with Fernet (AES-128-CBC + HMAC-SHA256). The key is in `SAFEBASE_KEY` env var.
-3. **MCP access only** - the AI agent never touches files directly. It only calls MCP tools. PII appears only in ephemeral tool responses, never in repo files or persisted chat logs.
+3. **MCP access only** - the AI agent never touches files directly. It only calls MCP tools. Sensitive content appears only in ephemeral tool responses, never in repo files or persisted chat logs.
 4. **Schema-free** - the server does not know what's in a bucket. Each file is a JSON object with arbitrary fields. The caller decides the structure per bucket.
 5. **Local only** - no network server, no Docker, no cloud. Runs as a stdio MCP subprocess on the local machine.
 
