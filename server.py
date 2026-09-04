@@ -365,6 +365,13 @@ def _tkinter_dialog(title: str, prompt: str, confirm: bool) -> Optional[DialogRe
     root.title(title)
     root.resizable(False, False)
 
+    # Force the dialog to the front so it is not hidden behind other windows.
+    # topmost is released after 500ms so the dialog behaves normally afterwards.
+    root.attributes('-topmost', True)
+    root.lift()
+    root.focus_force()
+    root.after(500, lambda: root.attributes('-topmost', False))
+
     frame = ttk.Frame(root, padding=16)
     frame.grid(row=0, column=0, sticky="nsew")
 
