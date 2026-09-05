@@ -1,5 +1,7 @@
 # SafeBase
 
+![Tests](https://github.com/lesichkovm/mcp-safebase/actions/workflows/test.yml/badge.svg)
+
 Encrypted file-based storage accessed via MCP, with human-gated per-bucket passwords.
 
 ## What it is
