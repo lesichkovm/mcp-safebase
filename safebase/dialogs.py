@@ -121,20 +121,32 @@ def _tkinter_dialog(title: str, prompt: str, confirm: bool) -> Optional[DialogRe
         confirm_entry = ttk.Entry(frame, show="*", width=32)
         confirm_entry.grid(row=2, column=1, pady=2)
 
-    ttk.Label(frame, text="Keep unlocked for:").grid(row=3, column=0, sticky="w", pady=(12, 2))
+    # Show/hide password toggle — lets the human verify long passwords.
+    show_var = tk.BooleanVar(value=False)
+
+    def toggle_show():
+        char = "" if show_var.get() else "*"
+        entry.config(show=char)
+        if confirm_entry is not None:
+            confirm_entry.config(show=char)
+
+    show_cb = ttk.Checkbutton(frame, text="Show password", variable=show_var, command=toggle_show)
+    show_cb.grid(row=3, column=1, sticky="w", pady=(4, 0))
+
+    ttk.Label(frame, text="Keep unlocked for:").grid(row=4, column=0, sticky="w", pady=(12, 2))
     duration_var = tk.IntVar(value=_DEFAULT_DURATION)
     dur_frame = ttk.Frame(frame)
-    dur_frame.grid(row=3, column=1, sticky="w", pady=(12, 2))
+    dur_frame.grid(row=4, column=1, sticky="w", pady=(12, 2))
     for i, mins in enumerate(_DURATION_OPTIONS):
         label = f"{mins} min" if mins > 0 else "Process lifetime"
         rb = ttk.Radiobutton(dur_frame, text=label, variable=duration_var, value=mins)
         rb.grid(row=0, column=i, padx=2)
 
     error_label = ttk.Label(frame, text="", foreground="red")
-    error_label.grid(row=4, column=0, columnspan=2, sticky="w", pady=(8, 0))
+    error_label.grid(row=5, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
     btn_frame = ttk.Frame(frame)
-    btn_frame.grid(row=5, column=0, columnspan=2, pady=(16, 0))
+    btn_frame.grid(row=6, column=0, columnspan=2, pady=(16, 0))
     ttk.Button(btn_frame, text="Cancel", command=on_cancel).grid(row=0, column=0, padx=4)
     ttk.Button(btn_frame, text="Unlock" if not confirm else "Create", command=on_ok).grid(row=0, column=1, padx=4)
 

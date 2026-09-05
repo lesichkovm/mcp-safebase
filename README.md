@@ -35,7 +35,7 @@ mkdir C:\Users\YourName\safebase-data
   "mcpServers": {
     "safebase": {
       "command": "uvx",
-      "args": ["--from", "git+ssh://git@github.com/lesichkovm/mcp-safebase", "safebase-server"],
+      "args": ["--from", "git+https://github.com/lesichkovm/mcp-safebase", "safebase-server"],
       "env": {
         "SAFEBASE_ROOT": "C:\\Users\\YourName\\safebase-data"
       }
