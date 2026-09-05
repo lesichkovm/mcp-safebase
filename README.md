@@ -14,7 +14,7 @@ Three rules:
 
 1. **Each bucket is encrypted with a separate password.** Compromising one bucket's password does not compromise the others.
 2. **The AI can only see or edit data if the human unlocks the bucket.** When the AI needs to read or write data, SafeBase pops up a native OS password dialog on the human's desktop. Until the human unlocks it, the AI cannot see or modify anything in that bucket.
-3. **Unlock is temporary.** The human chooses how long the key stays in memory: 5, 10, or 15 minutes, or for the lifetime of the server process. After that, the bucket locks again and the AI loses access until the human unlocks it next time.
+3. **Unlock is temporary.** The human chooses how long the key stays in memory: 1, 5, 10, or 15 minutes, or for the lifetime of the server process. After that, the bucket locks again and the AI loses access until the human unlocks it next time.
 
 The AI never sees the password.
 

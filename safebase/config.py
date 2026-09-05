@@ -10,5 +10,5 @@ _META_FILENAME = ".safebase-meta.json"
 _META_VERSION = 1
 
 # Session duration options in minutes. 0 means process lifetime (no timeout).
-_DURATION_OPTIONS = (5, 10, 15, 0)
-_DEFAULT_DURATION = 5  # preselected in the dialog
+_DURATION_OPTIONS = (1, 5, 10, 15, 0)
+_DEFAULT_DURATION = 1  # preselected in the dialog — most operations finish quickly
