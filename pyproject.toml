@@ -1,6 +1,6 @@
 [project]
 name = "mcp-safebase"
-version = "0.1.0"
+version = "0.3.0"
 description = "Encrypted file-based storage MCP server with per-bucket passwords and human-only secret editing."
 readme = "README.md"
 license = { file = "LICENSE" }
