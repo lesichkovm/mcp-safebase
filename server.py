@@ -350,5 +350,10 @@ def change_bucket_password(database: str, bucket: str) -> str:
 # Entry point
 # ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
+def main() -> None:
+    """Run the MCP server (console-script entry point)."""
     mcp.run()
+
+
+if __name__ == "__main__":
+    main()
