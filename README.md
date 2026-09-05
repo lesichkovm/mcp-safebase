@@ -34,8 +34,8 @@ mkdir C:\Users\YourName\safebase-data
 {
   "mcpServers": {
     "safebase": {
-      "command": "python",
-      "args": ["D:\\PROJECTs\\_modules_dracory\\mcp-safebase\\server.py"],
+      "command": "uvx",
+      "args": ["--from", "git+ssh://git@github.com/lesichkovm/mcp-safebase", "safebase-server"],
       "env": {
         "SAFEBASE_ROOT": "C:\\Users\\YourName\\safebase-data"
       }
@@ -52,20 +52,25 @@ The MCP client starts the server automatically when the AI calls a tool. The fir
 
 ## Tools
 
-| Tool | Description | Needs password? |
-|------|-------------|:---:|
-| `list_databases` | List all databases (folders) in the root | No |
-| `create_database` | Create a new database (folder) | No |
-| `list_buckets` | List buckets (subfolders) in a database | No |
-| `create_bucket` | Create a new bucket (subfolder) in a database | No |
-| `list_files` | List files in a bucket | No |
-| `put_file` | Write an encrypted JSON file to a bucket | Yes |
-| `get_file` | Read and decrypt a file from a bucket | Yes |
-| `edit_file` | Open a GUI editor on the human's screen to edit a stored secret. The AI never sees the content — only a success/cancel confirmation. | Yes |
-| `delete_file` | Delete a file from a bucket | No |
-| `delete_bucket` | Delete a bucket and all its contents | No |
-| `query_bucket` | List all files in a bucket with optional field filtering | Yes |
-| `change_bucket_password` | Change a bucket's password (re-encrypts all files) | Yes |
+| Tool | Description | Password dialog? | Editor dialog? |
+|------|-------------|:---:|:---:|
+| `list_databases` | List all databases (folders) in the root | No | No |
+| `create_database` | Create a new database (folder) | No | No |
+| `list_buckets` | List buckets (subfolders) in a database | No | No |
+| `create_bucket` | Create a new bucket (subfolder) in a database | No | No |
+| `list_files` | List files in a bucket | No | No |
+| `put_file` | Write an encrypted JSON file to a bucket | Yes¹ | No |
+| `get_file` | Read and decrypt a file from a bucket | Yes¹ | No |
+| `edit_file` | Open a GUI editor on the human's screen to edit a stored secret. The AI never sees the content — only a success/cancel confirmation. | Yes¹ | **Yes** |
+| `delete_file` | Delete a file from a bucket | No | No |
+| `delete_bucket` | Delete a bucket and all its contents | No | No |
+| `query_bucket` | List all files in a bucket with optional field filtering | Yes¹ | No |
+| `change_bucket_password` | Change a bucket's password (re-encrypts all files) | Yes² | No |
+
+**Dialogs shown to the human (the AI never sees any dialog content):**
+
+- **Password dialog** — a native OS window where the human enters or creates the bucket password. Shown by any tool marked "Yes¹" when the key is not already in memory (first use, or after the session duration expires). `change_bucket_password` (Yes²) shows it twice: once for the current password, once for the new one.
+- **Editor dialog** — only `edit_file` opens this. It's a tkinter window with an editable text field pre-filled with the decrypted JSON. The human edits the content directly and clicks Save (or Cancel). The AI receives only `"File updated successfully"` or `"Edit cancelled by user"` — never the file content.
 
 ## Documentation
 
@@ -77,7 +82,7 @@ The MCP client starts the server automatically when the AI calls a tool. The fir
 ## Testing
 
 ```bash
-pytest test_server.py -v   # 92 tests
+pytest test_server.py -v   # 101 tests
 python test_smoke.py       # quick smoke test (headless)
 ```
 
