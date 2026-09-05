@@ -66,6 +66,25 @@ def make_change_dialog(new_password: str = "new-pass-456", duration: int = 5):
     return _mock
 
 
+def make_editor_dialog(new_content: dict | None = None):
+    """Return a mock editor dialog that 'saves' the given content.
+
+    If new_content is None, the mock simulates the human cancelling the editor.
+    The dialog receives the current decrypted content; the mock ignores it and
+    returns new_content (simulating the human having edited it).
+    """
+    def _mock(database: str, bucket: str, filename: str, content):
+        return new_content
+    return _mock
+
+
+def make_editor_cancel_dialog():
+    """Return a mock editor dialog that simulates the human cancelling."""
+    def _mock(database: str, bucket: str, filename: str, content):
+        return None
+    return _mock
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -104,6 +123,8 @@ def server(test_env) -> "server_module":
     server_module._prompt_create_password_fn = make_create_dialog()
     server_module._prompt_enter_password_fn = make_enter_dialog()
     server_module._prompt_change_password_fn = make_change_dialog()
+    # Default editor mock: "save" a copy of the current content unchanged.
+    server_module._editor_dialog_fn = make_editor_dialog()
 
     # Clear the key cache between tests
     server_module._key_cache.clear()
@@ -338,6 +359,158 @@ class TestFiles:
         files = server._list_files("mydb", "mybucket")
         assert ".safebase-meta.json" not in files
         assert "test.json" in files
+
+
+# ---------------------------------------------------------------------------
+# edit_file tests
+# ---------------------------------------------------------------------------
+
+class TestEditFile:
+    """edit_file lets the human edit a stored secret without the AI seeing it.
+
+    The editor dialog is monkeypatched; these tests verify the core logic:
+    successful edit (re-encrypt + persist), cancel (no write), invalid JSON
+    is caught by the dialog layer, missing file/bucket, and access denied.
+    """
+
+    def test_edit_file_success(self, server):
+        """A saved edit is re-encrypted and persisted; AI gets only a confirmation."""
+        server._create_database("mydb")
+        server._create_bucket("mydb", "mybucket")
+        server._put_file("mydb", "mybucket", "secret.json", {"api_key": "old-value"})
+
+        # Human edits the content via the (mocked) editor dialog.
+        server._editor_dialog_fn = make_editor_dialog({"api_key": "new-value"})
+        result = server._edit_file("mydb", "mybucket", "secret.json")
+        assert result == "File updated successfully"
+
+        # The persisted content reflects the edit.
+        data = server._get_file("mydb", "mybucket", "secret.json")
+        assert data["api_key"] == "new-value"
+
+    def test_edit_file_cancel_writes_nothing(self, server):
+        """Cancelling the editor leaves the original content untouched."""
+        server._create_database("mydb")
+        server._create_bucket("mydb", "mybucket")
+        server._put_file("mydb", "mybucket", "secret.json", {"api_key": "old-value"})
+
+        server._editor_dialog_fn = make_editor_cancel_dialog()
+        result = server._edit_file("mydb", "mybucket", "secret.json")
+        assert "cancelled" in result.lower()
+
+        # Original content is preserved.
+        data = server._get_file("mydb", "mybucket", "secret.json")
+        assert data["api_key"] == "old-value"
+
+    def test_edit_file_invalid_json_returns_cancel_message(self, server):
+        """If the editor returns a non-dict (e.g. invalid JSON slipped through),
+        edit_file does not write and returns a cancellation-style message."""
+        server._create_database("mydb")
+        server._create_bucket("mydb", "mybucket")
+        server._put_file("mydb", "mybucket", "secret.json", {"api_key": "old-value"})
+
+        # A misbehaving editor that returns a non-dict (e.g. a JSON list).
+        server._editor_dialog_fn = make_editor_dialog([1, 2, 3])  # type: ignore[arg-type]
+        result = server._edit_file("mydb", "mybucket", "secret.json")
+        assert "not a JSON object" in result
+
+        # Original content is preserved.
+        data = server._get_file("mydb", "mybucket", "secret.json")
+        assert data["api_key"] == "old-value"
+
+    def test_edit_file_missing_file(self, server):
+        """Editing a nonexistent file returns an error, no editor shown."""
+        server._create_database("mydb")
+        server._create_bucket("mydb", "mybucket")
+        server._put_file("mydb", "mybucket", "other.json", {"k": "v"})
+
+        editor_called = [False]
+        def _spy(database, bucket, filename, content):
+            editor_called[0] = True
+            return None
+        server._editor_dialog_fn = _spy
+
+        result = server._edit_file("mydb", "mybucket", "nonexistent.json")
+        assert "does not exist" in result
+        assert editor_called[0] is False  # editor never opened
+
+    def test_edit_file_missing_bucket(self, server):
+        server._create_database("mydb")
+        result = server._edit_file("mydb", "nonexistent", "secret.json")
+        assert "does not exist" in result
+
+    def test_edit_file_access_denied(self, server):
+        """If the human cancels the password unlock, edit_file returns access denied."""
+        server._create_database("mydb")
+        server._create_bucket("mydb", "mybucket")
+        server._put_file("mydb", "mybucket", "secret.json", {"api_key": "old-value"})
+
+        # Force a re-prompt by clearing the cache, then cancel the password dialog.
+        server._key_cache.clear()
+        server._prompt_enter_password_fn = make_cancel_dialog()
+        result = server._edit_file("mydb", "mybucket", "secret.json")
+        assert "Access denied" in result
+
+    def test_edit_file_never_returns_content(self, server):
+        """The return value must never contain the secret value (only status)."""
+        server._create_database("mydb")
+        server._create_bucket("mydb", "mybucket")
+        secret_value = "super-secret-never-to-leak"
+        server._put_file("mydb", "mybucket", "secret.json", {"api_key": secret_value})
+
+        server._editor_dialog_fn = make_editor_dialog({"api_key": "rotated"})
+        result = server._edit_file("mydb", "mybucket", "secret.json")
+        assert secret_value not in result
+        assert "rotated" not in result
+
+    def test_edit_file_invalid_filename(self, server):
+        """Invalid filenames raise ValueError before any dialog is shown."""
+        server._create_database("mydb")
+        server._create_bucket("mydb", "mybucket")
+        with pytest.raises(ValueError, match="must end with .json"):
+            server._edit_file("mydb", "mybucket", "noext")
+
+    def test_edit_file_via_mcp(self, test_env):
+        """edit_file is callable through the MCP protocol and returns only status."""
+        def _run():
+            if "server" in sys.modules:
+                del sys.modules["server"]
+            import server as server_module
+            from mcp import Client
+
+            server_module._prompt_create_password_fn = make_create_dialog()
+            server_module._prompt_enter_password_fn = make_enter_dialog()
+            server_module._prompt_change_password_fn = make_change_dialog()
+            server_module._editor_dialog_fn = make_editor_dialog({"status": "rotated"})
+            server_module._key_cache.clear()
+
+            async def runner():
+                async with Client(server_module.mcp) as client:
+                    await client.call_tool("create_database", {"database": "mydb"})
+                    await client.call_tool("create_bucket", {
+                        "database": "mydb", "bucket": "mybucket",
+                    })
+                    await client.call_tool("put_file", {
+                        "database": "mydb", "bucket": "mybucket",
+                        "filename": "secret.json",
+                        "content": {"status": "active"},
+                    })
+                    r = await client.call_tool("edit_file", {
+                        "database": "mydb", "bucket": "mybucket",
+                        "filename": "secret.json",
+                    })
+                    assert "File updated successfully" in r.content[0].text
+                    # Confirm the edit persisted by reading it back.
+                    r = await client.call_tool("get_file", {
+                        "database": "mydb", "bucket": "mybucket",
+                        "filename": "secret.json",
+                    })
+                    data = json.loads(r.content[0].text)
+                    assert data["status"] == "rotated"
+
+            asyncio.run(runner())
+
+        _run()
 
 
 # ---------------------------------------------------------------------------
@@ -1098,6 +1271,7 @@ class TestMCPTransport:
         server_module._prompt_create_password_fn = make_create_dialog()
         server_module._prompt_enter_password_fn = make_enter_dialog()
         server_module._prompt_change_password_fn = make_change_dialog()
+        server_module._editor_dialog_fn = make_editor_dialog()
         server_module._key_cache.clear()
 
         async def runner():
@@ -1121,6 +1295,7 @@ class TestMCPTransport:
             assert "delete_bucket" in tool_names
             assert "query_bucket" in tool_names
             assert "change_bucket_password" in tool_names
+            assert "edit_file" in tool_names
 
         self._run_mcp_test(test_env, test)
 
