@@ -141,7 +141,7 @@ When the AI calls `put_file` or any crypto-needing tool on a bucket with no pass
 2. The server shows a **create-password dialog** on the human's desktop:
    - "Create a password for bucket `mydb/contacts`"
    - Password field + confirm field
-   - Duration selector (5 / 10 / 15 min / process lifetime, 5 min preselected)
+   - Duration selector (1 / 5 / 10 / 15 min / process lifetime, 1 min preselected)
    - Create / Cancel buttons
 3. The human types and confirms the password, picks a duration, clicks Create
 4. The server generates a random 32-byte PBKDF2 salt, bcrypt-hashes the password, and writes `.safebase-meta.json`
@@ -153,7 +153,7 @@ When the AI calls `put_file` or any crypto-needing tool on a bucket with no pass
 1. The server shows an **enter-password dialog** on the human's desktop:
    - "Enter password for bucket `mydb/contacts`"
    - Password field
-   - Duration selector (5 / 10 / 15 min / process lifetime, 5 min preselected)
+   - Duration selector (1 / 5 / 10 / 15 min / process lifetime, 1 min preselected)
    - Unlock / Cancel buttons
 2. The human types the password, picks a duration, clicks Unlock
 3. The server verifies the password against the stored bcrypt hash
@@ -179,7 +179,8 @@ The dialog includes a duration selector:
 
 | Option | Meaning |
 |--------|---------|
-| 5 minutes | Key expires after 5 minutes of inactivity (preselected) |
+| 1 minute | Key expires after 1 minute of inactivity (preselected) |
+| 5 minutes | Key expires after 5 minutes of inactivity |
 | 10 minutes | Key expires after 10 minutes of inactivity |
 | 15 minutes | Key expires after 15 minutes of inactivity |
 | Process lifetime | Key stays in memory until the MCP server process restarts |
@@ -288,7 +289,7 @@ Tests monkeypatch these to inject canned passwords/edits without a GUI.
 @dataclass
 class DialogResult:
     password: Optional[str]     # None if the human cancelled
-    duration_minutes: int       # one of (5, 10, 15, 0)
+    duration_minutes: int       # one of (1, 5, 10, 15, 0)
 ```
 
 ## Git History
