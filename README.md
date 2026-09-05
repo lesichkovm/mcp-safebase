@@ -2,11 +2,33 @@
 
 ![Tests](https://github.com/lesichkovm/mcp-safebase/actions/workflows/test.yml/badge.svg)
 
-Encrypted file-based storage accessed via MCP, with human-gated per-bucket passwords.
+An encrypted store for secrets and sensitive information that AI agents can read and write via MCP — but only when the human unlocks access. This keeps your data safe from leaks, accidental exposure, and AI mishaps. **The human controls access, not the AI.**
 
-## What it is
+## Why
 
-A Python MCP server that provides encrypted file-based storage organized as databases, buckets, and files. The AI agent reads and writes data through MCP tool calls. The human gates access by entering per-bucket passwords into native OS dialogs that the server pops up on their desktop. **The AI never sees the password.**
+AI agents often need access to secrets and sensitive information — API keys, credentials, customer data. But you don't want the AI to have unrestricted access to all of it at all times. The more the AI can see, the more it can accidentally leak or misuse.
+
+SafeBase gives you control over when and for how long the AI can access your data. When the AI needs it, you unlock the bucket. When you're done, it locks again. The AI only sees the content during the session you allow — not before, not after.
+
+Three rules:
+
+1. **Each bucket is encrypted with a separate password.** Compromising one bucket's password does not compromise the others.
+2. **The AI can only see or edit data if the human unlocks the bucket.** When the AI needs to read or write data, SafeBase pops up a native OS password dialog on the human's desktop. Until the human unlocks it, the AI cannot see or modify anything in that bucket.
+3. **Unlock is temporary.** The human chooses how long the key stays in memory: 5, 10, or 15 minutes, or for the lifetime of the server process. After that, the bucket locks again and the AI loses access until the human unlocks it next time.
+
+The AI never sees the password.
+
+## How it works
+
+When the AI calls a tool that needs to decrypt data (`get_file`, `put_file`, `query_bucket`, `edit_file`), SafeBase checks whether that bucket's key is already in memory:
+
+- **Bucket is locked** → a password dialog appears on the human's desktop. The human types the password and picks a duration. The server derives the encryption key and holds it in memory. Until the human does this, the AI cannot access any data in that bucket.
+- **Bucket is unlocked** → the tool call completes immediately, no dialog.
+- **Unlock has expired** → the bucket locks again. The dialog reappears. The AI must wait for the human to unlock it.
+
+For secret rotation, `edit_file` opens a GUI editor on the human's screen pre-filled with the decrypted JSON. The human edits and saves. The AI receives only `"File updated successfully"` — never the new value.
+
+## Data model
 
 - **Database** = a folder
 - **Bucket** = a subfolder inside a database, each with its own password
@@ -19,7 +41,13 @@ All files are encrypted at rest using Fernet (AES-128-CBC + HMAC-SHA256). Passwo
 **1. Install:**
 
 ```bash
-pip install -r requirements.txt
+pip install mcp-safebase
+```
+
+Or use directly with `uvx` (no install needed):
+
+```bash
+uvx mcp-safebase
 ```
 
 Requires `tkinter` (bundled with Python on Windows and macOS; on Linux may need `python3-tk`).
@@ -37,7 +65,7 @@ mkdir C:\Users\YourName\safebase-data
   "mcpServers": {
     "safebase": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/lesichkovm/mcp-safebase", "safebase-server"],
+      "args": ["mcp-safebase"],
       "env": {
         "SAFEBASE_ROOT": "C:\\Users\\YourName\\safebase-data"
       }
@@ -79,7 +107,7 @@ The MCP client starts the server automatically when the AI calls a tool. The fir
 - [Specification](docs/specification.md) — full technical spec: architecture, storage model, encryption, password lifecycle, threat model, error handling
 - [Password System](docs/password-system.md) — how per-bucket passwords work, session duration, changing passwords, what happens when you cancel
 - [Security](docs/security.md) — threat model, what SafeBase protects against and what it doesn't
-- [Usage Examples](docs/usage.md) — concrete examples: SME candidates, tender leads, different schemas
+- [Usage Examples](docs/usage.md) — concrete examples: contact rosters, sales leads, secret rotation
 
 ## Testing
 
