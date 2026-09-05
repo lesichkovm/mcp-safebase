@@ -29,6 +29,7 @@ SafeBase is an encrypted file-based storage system accessed via MCP (Model Conte
 
 - **The AI agent reading the password from a config file or env var** — there is none. The password is never stored in plaintext anywhere on disk.
 - **The AI agent intercepting the password** — the dialog is a native OS window shown by the server process directly on the human's desktop. The AI has no visibility into the dialog, no access to keystrokes, and no way to intercept the password.
+- **The secret value leaking into the AI conversation when rotated** — `edit_file` opens a GUI editor on the human's screen pre-filled with the decrypted JSON. The human edits and saves; the AI only receives `"File updated successfully"` or `"Edit cancelled by user"`. The new value never passes through the conversation.
 - **An attacker with read access to the storage root** — files are encrypted; the metadata file contains only a one-way bcrypt hash and a per-bucket PBKDF2 salt.
 - **Plaintext leaking into git history** — all files are `.enc` ciphertext; git diffs contain no plaintext.
 
@@ -243,6 +244,7 @@ There is no `SAFEBASE_PASSWORD` environment variable. The password is entered pe
 | `list_files` | `database`, `bucket` | No | List files in a bucket (filenames only, no decryption) |
 | `put_file` | `database`, `bucket`, `filename`, `content` | Yes | Write an encrypted JSON file to a bucket (overwrites if exists) |
 | `get_file` | `database`, `bucket`, `filename` | Yes | Read and decrypt a file from a bucket |
+| `edit_file` | `database`, `bucket`, `filename` | Yes | Open a GUI editor on the human's screen showing the decrypted JSON. The human edits and saves; the file is re-encrypted. The AI never sees the content — only `"File updated successfully"` or `"Edit cancelled by user"`. |
 | `delete_file` | `database`, `bucket`, `filename` | No | Delete a file from a bucket |
 | `delete_bucket` | `database`, `bucket` | No | Delete a bucket and all its contents (folder + metadata + key cache) |
 | `query_bucket` | `database`, `bucket`, `filter_fields?` | Yes | List all files in a bucket with optional field-equality filtering |
@@ -269,9 +271,16 @@ The dialog functions are module-level references, injectable for testing:
 _prompt_create_password_fn: Callable[[str, str], Optional[DialogResult]]
 _prompt_enter_password_fn:   Callable[[str, str], Optional[DialogResult]]
 _prompt_change_password_fn:  Callable[[str, str], Optional[DialogResult]]
+_editor_dialog_fn:           Callable[[str, str, str, dict], Optional[dict]]
 ```
 
-Tests monkeypatch these to inject canned passwords without a GUI.
+`_editor_dialog_fn` (used by `edit_file`) receives the database, bucket,
+filename, and the current decrypted content as a dict. It returns the edited
+dict on Save, or `None` on Cancel. The default implementation opens a tkinter
+`Toplevel` with a `scrolledtext.ScrolledText` widget pre-filled with the
+pretty-printed JSON and validates the edited text is a JSON object on Save.
+
+Tests monkeypatch these to inject canned passwords/edits without a GUI.
 
 ### DialogResult
 
@@ -291,6 +300,7 @@ The storage root is a git repo. Every mutation auto-commits:
 | `create_database` | `create database: {database}` |
 | `create_bucket` | `create bucket: {database}/{bucket}` |
 | `put_file` | `put: {database}/{bucket}/{filename}` |
+| `edit_file` | `edit: {database}/{bucket}/{filename}` |
 | `delete_file` | `delete: {database}/{bucket}/{filename}` |
 | `delete_bucket` | `delete bucket: {database}/{bucket}` |
 | `change_bucket_password` | `change password: {database}/{bucket}` |
@@ -322,6 +332,32 @@ The git repo is auto-initialized with identity `SafeBase MCP <safebase@local>` i
 - **Dialog**: tkinter (stdlib)
 - **No external network dependencies**
 
+## Code Layout
+
+The server is split into a thin facade plus an internal package:
+
+```
+server.py              # Facade: re-exports internals, holds mutable dialog
+                       # refs + key cache, registers MCP tools, entry point.
+safebase/
+  config.py            # Tunable constants (PBKDF2 iterations, durations)
+  validation.py        # Name/filename regex validation (pure functions)
+  paths.py             # SAFEBASE_ROOT resolution + path helpers
+  crypto.py            # Fernet encrypt/decrypt + key derivation
+  meta.py              # BucketMeta: bcrypt hash + salt persistence
+  keycache.py          # In-memory Fernet cache with idle timeout
+  dialogs.py           # tkinter password + editor dialogs, DialogResult
+  access.py            # Central gate: _get_bucket_key (prompts human)
+  git.py               # Auto-init + auto-commit helpers
+  core.py              # Core ops: list/create/put/get/edit/delete/query/change
+```
+
+The facade (`server.py`) keeps the public API stable: tests import `server`
+and monkeypatch `server._prompt_*_fn`, `server._editor_dialog_fn`, and
+`server._key_cache` exactly as before. The internal modules read those
+references lazily via `import server` at call time, so monkeypatching the
+facade propagates to the internals.
+
 ## Testing
 
 ```bash
@@ -341,6 +377,7 @@ Tests mock the dialog functions to inject canned passwords, so they run headless
 | Databases (create, list, validate) | 12 |
 | Buckets (create, list, delete, validate) | 10 |
 | Files (put, get, delete, list, validate) | 14 |
+| edit_file (save, cancel, invalid JSON, missing file/bucket, access denied, MCP) | 9 |
 | Query (filter, nested data, metadata exclusion) | 8 |
 | Encryption (ciphertext on disk, wrong password, unicode, large files) | 8 |
 | Per-bucket passwords (create, verify, change, cancel, wrong) | 13 |

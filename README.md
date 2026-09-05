@@ -61,6 +61,7 @@ The MCP client starts the server automatically when the AI calls a tool. The fir
 | `list_files` | List files in a bucket | No |
 | `put_file` | Write an encrypted JSON file to a bucket | Yes |
 | `get_file` | Read and decrypt a file from a bucket | Yes |
+| `edit_file` | Open a GUI editor on the human's screen to edit a stored secret. The AI never sees the content — only a success/cancel confirmation. | Yes |
 | `delete_file` | Delete a file from a bucket | No |
 | `delete_bucket` | Delete a bucket and all its contents | No |
 | `query_bucket` | List all files in a bucket with optional field filtering | Yes |

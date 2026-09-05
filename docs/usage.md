@@ -112,3 +112,28 @@ query_bucket("coursethread", "sme-candidates", {"vetting_status": "applied"})
 # This does NOT work (nested field — query_bucket matches top-level only)
 # To filter by nested data, fetch all files and filter client-side.
 ```
+
+## Editing a Secret Without Exposing It to the AI
+
+`edit_file` lets the human rotate or update a stored secret without the new
+value ever passing through the AI conversation. The AI only triggers the
+dialog; the human edits the decrypted JSON directly on their screen.
+
+```
+# A secret is already stored (e.g. a production API key)
+put_file("coursethread", "sme-candidates", "api-key.json", {
+    "service": "reports-api",
+    "key": "old-key-value"
+})
+
+# Time to rotate. The AI calls edit_file — it never sees the current or new key.
+edit_file("coursethread", "sme-candidates", "api-key.json")
+#   -> a tkinter editor opens on the human's screen, pre-filled with the JSON
+#   -> the human edits "key" to the new value and clicks Save
+#   -> the AI receives only: "File updated successfully"
+#   -> on Cancel, the AI receives: "Edit cancelled by user"
+```
+
+This closes the gap where rotating a secret would otherwise require either
+telling the AI the new value (exposing it in the conversation) or bypassing
+SafeBase entirely.
