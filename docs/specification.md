@@ -64,14 +64,14 @@ Encrypted file store (OUTSIDE the repo, path set via SAFEBASE_ROOT env var)
     | on disk structure:
     v
 {SAFEBASE_ROOT}/
-  coursethread/
-    sme-candidates/
+  mydb/
+    contacts/
       .safebase-meta.json     <- bcrypt hash + PBKDF2 salt (no plaintext)
-      cand-001.json.enc       <- encrypted with this bucket's key
-      cand-002.json.enc
-    tender-leads/
+      person-001.json.enc     <- encrypted with this bucket's key
+      person-002.json.enc
+    leads/
       .safebase-meta.json
-      t-001.json.enc
+      lead-001.json.enc
   personal/
     notes/
       .safebase-meta.json
@@ -139,7 +139,7 @@ When the AI calls `put_file` or any crypto-needing tool on a bucket with no pass
 
 1. The server detects no `.safebase-meta.json` in the bucket
 2. The server shows a **create-password dialog** on the human's desktop:
-   - "Create a password for bucket `coursethread/sme-candidates`"
+   - "Create a password for bucket `mydb/contacts`"
    - Password field + confirm field
    - Duration selector (5 / 10 / 15 min / process lifetime, 5 min preselected)
    - Create / Cancel buttons
@@ -151,7 +151,7 @@ When the AI calls `put_file` or any crypto-needing tool on a bucket with no pass
 ### Subsequent Use (Key Not in Memory or Expired)
 
 1. The server shows an **enter-password dialog** on the human's desktop:
-   - "Enter password for bucket `coursethread/sme-candidates`"
+   - "Enter password for bucket `mydb/contacts`"
    - Password field
    - Duration selector (5 / 10 / 15 min / process lifetime, 5 min preselected)
    - Unlock / Cancel buttons

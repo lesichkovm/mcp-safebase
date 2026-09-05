@@ -1308,60 +1308,60 @@ class TestMCPTransport:
 
     def test_full_workflow_via_mcp(self, test_env):
         async def test(client):
-            r = await client.call_tool("create_database", {"database": "coursethread"})
+            r = await client.call_tool("create_database", {"database": "mydb"})
             assert "Created" in r.content[0].text
 
             r = await client.call_tool("create_bucket", {
-                "database": "coursethread", "bucket": "sme-candidates"
+                "database": "mydb", "bucket": "contacts"
             })
             assert "Created" in r.content[0].text
 
             r = await client.call_tool("put_file", {
-                "database": "coursethread",
-                "bucket": "sme-candidates",
-                "filename": "cand-001.json",
-                "content": {"name": "Jane", "status": "applied"},
+                "database": "mydb",
+                "bucket": "contacts",
+                "filename": "person-001.json",
+                "content": {"name": "Jane", "status": "active"},
             })
             assert "Wrote" in r.content[0].text
 
             r = await client.call_tool("get_file", {
-                "database": "coursethread",
-                "bucket": "sme-candidates",
-                "filename": "cand-001.json",
+                "database": "mydb",
+                "bucket": "contacts",
+                "filename": "person-001.json",
             })
             data = json.loads(r.content[0].text)
             assert data["name"] == "Jane"
-            assert data["status"] == "applied"
+            assert data["status"] == "active"
 
             r = await client.call_tool("query_bucket", {
-                "database": "coursethread",
-                "bucket": "sme-candidates",
-                "filter_fields": {"status": "applied"},
+                "database": "mydb",
+                "bucket": "contacts",
+                "filter_fields": {"status": "active"},
             })
             items = json.loads(r.content[0].text)
             assert len(items) == 1
             assert items[0]["name"] == "Jane"
 
             r = await client.call_tool("list_files", {
-                "database": "coursethread",
-                "bucket": "sme-candidates",
+                "database": "mydb",
+                "bucket": "contacts",
             })
             files = json.loads(r.content[0].text)
-            assert "cand-001.json" in files
+            assert "person-001.json" in files
 
             r = await client.call_tool("delete_file", {
-                "database": "coursethread",
-                "bucket": "sme-candidates",
-                "filename": "cand-001.json",
+                "database": "mydb",
+                "bucket": "contacts",
+                "filename": "person-001.json",
             })
             assert "Deleted" in r.content[0].text
 
             r = await client.call_tool("list_files", {
-                "database": "coursethread",
-                "bucket": "sme-candidates",
+                "database": "mydb",
+                "bucket": "contacts",
             })
             files = json.loads(r.content[0].text)
-            assert "cand-001.json" not in files
+            assert "person-001.json" not in files
 
         self._run_mcp_test(test_env, test)
 

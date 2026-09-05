@@ -2,65 +2,64 @@
 
 SafeBase is schema-free — each file is an arbitrary JSON object. The caller decides the structure per bucket. Here are concrete examples.
 
-## SME Candidate Roster
+## Contact Roster
 
-A bucket for storing SME (Subject Matter Expert) candidate profiles, each as one encrypted JSON file.
+A bucket for storing contact profiles, each as one encrypted JSON file.
 
 ```
 # Create structure
-create_database("coursethread")
-create_bucket("coursethread", "sme-candidates")
+create_database("mydb")
+create_bucket("mydb", "contacts")
 
-# Add a candidate — a dialog appears to create the bucket password
-put_file("coursethread", "sme-candidates", "cand-001.json", {
+# Add a contact — a dialog appears to create the bucket password
+put_file("mydb", "contacts", "person-001.json", {
     "name": "Jane Smith",
     "email": "jane@example.com",
-    "domain": "Cybersecurity",
-    "per_course_price_usd": 50,
-    "vetting_status": "applied",
+    "role": "Advisor",
+    "hourly_rate_usd": 50,
+    "status": "active",
     "linkedin_url": "https://linkedin.com/in/janesmith",
-    "fact_check_approach": "I verify claims against peer-reviewed sources..."
+    "notes": "Available weekdays."
 })
 
-# List all candidates (no dialog if key still in memory)
-list_files("coursethread", "sme-candidates")
-# → ["cand-001.json"]
+# List all contacts (no dialog if key still in memory)
+list_files("mydb", "contacts")
+# → ["person-001.json"]
 
-# Get one candidate
-get_file("coursethread", "sme-candidates", "cand-001.json")
+# Get one contact
+get_file("mydb", "contacts", "person-001.json")
 
-# Find all candidates with a specific vetting status
-query_bucket("coursethread", "sme-candidates", {"vetting_status": "applied"})
+# Find all contacts with a specific status
+query_bucket("mydb", "contacts", {"status": "active"})
 
-# Update vetting status (put_file overwrites the whole file)
-put_file("coursethread", "sme-candidates", "cand-001.json", {
+# Update status (put_file overwrites the whole file)
+put_file("mydb", "contacts", "person-001.json", {
     "name": "Jane Smith",
     "email": "jane@example.com",
-    "domain": "Cybersecurity",
-    "per_course_price_usd": 50,
-    "vetting_status": "md_reviewed",
+    "role": "Advisor",
+    "hourly_rate_usd": 50,
+    "status": "inactive",
     "linkedin_url": "https://linkedin.com/in/janesmith",
-    "fact_check_approach": "I verify claims against peer-reviewed sources...",
-    "vetting_notes": "Credentials verified via LinkedIn. Domain fit confirmed."
+    "notes": "Available weekdays. On sabbatical until Q4."
 })
 ```
 
-## Tender Leads (Different Bucket, Different Password)
+## Sales Leads (Different Bucket, Different Password)
 
 A separate bucket in the same database, with its own password. Compromising one bucket's password does not compromise the other.
 
 ```
-create_bucket("coursethread", "tender-leads")
+create_bucket("mydb", "leads")
 
 # A dialog appears to create a DIFFERENT password for this bucket
-put_file("coursethread", "tender-leads", "t-001.json", {
-    "title": "NHS Digital Training Framework",
+put_file("mydb", "leads", "lead-001.json", {
+    "title": "Acme Training Framework",
     "deadline": "2026-09-15",
-    "value_gbp": 50000,
+    "value_usd": 50000,
     "status": "monitoring"
 })
 
-query_bucket("coursethread", "tender-leads", {"status": "monitoring"})
+query_bucket("mydb", "leads", {"status": "monitoring"})
 ```
 
 Same server, same tools, different bucket, different password.
@@ -84,22 +83,22 @@ put_file("personal", "notes", "note-001.json", {
 `query_bucket` accepts multiple field-equality filters. All must match (AND logic):
 
 ```
-query_bucket("coursethread", "sme-candidates", {
-    "vetting_status": "md_reviewed",
-    "domain": "Cybersecurity"
+query_bucket("mydb", "contacts", {
+    "status": "inactive",
+    "role": "Advisor"
 })
 ```
 
-Returns only candidates who are both reviewed AND in the cybersecurity domain.
+Returns only contacts who are both inactive AND in the Advisor role.
 
 ## Nested Data
 
 Files can contain nested JSON. `query_bucket` matches top-level fields only:
 
 ```
-put_file("coursethread", "sme-candidates", "cand-002.json", {
+put_file("mydb", "contacts", "person-002.json", {
     "name": "John Doe",
-    "vetting_status": "applied",
+    "status": "active",
     "education": [
         {"degree": "PhD", "institution": "MIT"},
         {"degree": "MSc", "institution": "Stanford"}
@@ -107,7 +106,7 @@ put_file("coursethread", "sme-candidates", "cand-002.json", {
 })
 
 # This works (top-level field)
-query_bucket("coursethread", "sme-candidates", {"vetting_status": "applied"})
+query_bucket("mydb", "contacts", {"status": "active"})
 
 # This does NOT work (nested field — query_bucket matches top-level only)
 # To filter by nested data, fetch all files and filter client-side.
@@ -121,13 +120,13 @@ dialog; the human edits the decrypted JSON directly on their screen.
 
 ```
 # A secret is already stored (e.g. a production API key)
-put_file("coursethread", "sme-candidates", "api-key.json", {
+put_file("mydb", "contacts", "api-key.json", {
     "service": "reports-api",
     "key": "old-key-value"
 })
 
 # Time to rotate. The AI calls edit_file — it never sees the current or new key.
-edit_file("coursethread", "sme-candidates", "api-key.json")
+edit_file("mydb", "contacts", "api-key.json")
 #   -> a tkinter editor opens on the human's screen, pre-filled with the JSON
 #   -> the human edits "key" to the new value and clicks Save
 #   -> the AI receives only: "File updated successfully"

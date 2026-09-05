@@ -6,7 +6,7 @@ SafeBase uses per-bucket passwords. Each bucket has its own password, set by the
 
 When the AI calls `put_file` (or any crypto-needing tool) on a bucket that has no password set yet:
 
-1. A dialog appears on your screen: "Create a password for bucket `coursethread/sme-candidates`"
+1. A dialog appears on your screen: "Create a password for bucket `mydb/contacts`"
 2. You type and confirm a password, pick a duration (5 / 10 / 15 min / process lifetime), click Create
 3. The server generates a random 32-byte PBKDF2 salt, bcrypt-hashes the password, and writes `.safebase-meta.json` inside the bucket
 4. The server derives the Fernet key from the raw password + salt, holds it in memory for the chosen duration
@@ -14,7 +14,7 @@ When the AI calls `put_file` (or any crypto-needing tool) on a bucket that has n
 
 ## Subsequent Use (Key Not in Memory or Expired)
 
-1. A dialog appears: "Enter password for bucket `coursethread/sme-candidates`"
+1. A dialog appears: "Enter password for bucket `mydb/contacts`"
 2. You type the password, pick a duration, click Unlock
 3. The server verifies the password against the stored bcrypt hash
 4. If correct, it derives the Fernet key and caches it for the chosen duration
